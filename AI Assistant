@@ -1,0 +1,79 @@
+import speech_recognition as sr
+import pyttsx3
+import webbrowser
+import datetime
+import pyjokes
+import requests
+
+engine = pyttsx3.init()
+
+def speak(text):
+    engine.say(text)
+    engine.runAndWait()
+
+def listen():
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("🎙️ Listening...")
+        audio = r.listen(source)
+        try:
+            command = r.recognize_google(audio)
+            print(f"🧠 You said: {command}")
+            return command.lower()
+        except:
+            speak("Sorry, I didn't get that.")
+            return ""
+
+def get_weather(city):
+    API_KEY = "your_openweathermap_api_key"
+    url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}&units=metric"
+    res = requests.get(url).json()
+    if res.get("main"):
+        temp = res['main']['temp']
+        desc = res['weather'][0]['description']
+        return f"The weather in {city} is {desc} with {temp}°C."
+    return "Sorry, I couldn't get the weather info."
+
+# Start
+speak("Hello! I am your Python assistant.")
+while True:
+    command = listen()
+
+    if "time" in command:
+        now = datetime.datetime.now().strftime("%H:%M")
+        speak(f"The time is {now}")
+
+    elif "date" in command:
+        today = datetime.date.today().strftime("%B %d, %Y")
+        speak(f"Today is {today}")
+
+    elif "open google" in command:
+        webbrowser.open("https://www.google.com")
+        speak("Opening Google")
+
+    elif "search for" in command:
+        search_term = command.replace("search for", "").strip()
+        webbrowser.open(f"https://www.google.com/search?q={search_term}")
+        speak(f"Here are the results for {search_term}")
+
+    elif "play" in command and "on youtube" in command:
+        video = command.replace("play", "").replace("on youtube", "").strip()
+        webbrowser.open(f"https://www.youtube.com/results?search_query={video}")
+        speak(f"Playing {video} on YouTube")
+
+    elif "joke" in command:
+        joke = pyjokes.get_joke()
+        speak(joke)
+
+    elif "weather" in command:
+        speak("Which city's weather do you want?")
+        city = listen()
+        weather = get_weather(city)
+        speak(weather)
+
+    elif "thank you" in command or "bye" in command:
+        speak("You're welcome. Goodbye!")
+        break
+
+    else:
+        speak("Sorry, I can't do that yet.")
