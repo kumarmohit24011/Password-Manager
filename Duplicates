@@ -1,0 +1,49 @@
+import os
+import hashlib
+from tqdm import tqdm
+
+def calculate_hash(filepath, block_size=65536):
+    """Calculate MD5 hash of a file."""
+    hasher = hashlib.md5()
+    with open(filepath, 'rb') as f:
+        buf = f.read(block_size)
+        while len(buf) > 0:
+            hasher.update(buf)
+            buf = f.read(block_size)
+    return hasher.hexdigest()
+
+def find_duplicates(directory):
+    """Find duplicate files in the given directory."""
+    duplicates = {}
+    for root, _, files in os.walk(directory):
+        for filename in tqdm(files, desc="Scanning files"):
+            filepath = os.path.join(root, filename)
+            # Skip directories/symlinks
+            if not os.path.isfile(filepath):
+                continue
+            file_hash = calculate_hash(filepath)
+            if file_hash in duplicates:
+                duplicates[file_hash].append(filepath)
+            else:
+                duplicates[file_hash] = [filepath]
+    return duplicates
+
+def delete_duplicates(duplicates):
+    """Delete duplicate files, keeping the first occurrence."""
+    for file_hash, filepaths in duplicates.items():
+        if len(filepaths) > 1:
+            print(f"\nFound {len(filepaths)} duplicates for hash {file_hash}:")
+            # Keep the first file, delete the rest
+            for duplicate in filepaths[1:]:
+                print(f"Deleting: {duplicate}")
+                os.remove(duplicate)
+
+def main():
+    target_directory = r"C:\Users\Mohit Kumar\Desktop\TestFiles"
+    print(f"Scanning for duplicates in: {target_directory}")
+    duplicates = find_duplicates(target_directory)
+    delete_duplicates(duplicates)
+    print("\nDuplicate removal complete!")
+
+if __name__ == "__main__":
+    main()
