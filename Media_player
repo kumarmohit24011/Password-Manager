@@ -1,0 +1,335 @@
+import tkinter as tk
+from tkinter import filedialog, ttk
+import vlc
+import platform
+import webbrowser
+
+
+class VideoPlayer:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("TechYatri Mini VLC Player - Day 21")
+        self.root.geometry("900x600")
+        self.root.configure(bg="#1a1a2e")  # Dark blue background
+        self.root.minsize(800, 500)
+        self.media_loaded = False
+        # VLC player instance
+        self.instance = vlc.Instance()
+        self.player = self.instance.media_player_new()
+
+        # Modern UI with gradient effects
+        self.create_header()
+        self.create_video_frame()
+        self.create_controls()
+        self.create_footer()
+
+        # Embed video properly based on OS
+        self.root.after(100, self.embed_video)
+
+        # Update video time every 500 ms
+        self.update_time()
+
+        # Initialize variables
+        self.media_loaded = False
+        self.is_fullscreen = False
+        self.last_volume = 50
+
+    def create_header(self):
+        # Header frame with gradient effect
+        header = tk.Frame(self.root, bg="#16213e", height=80)
+        header.pack(fill=tk.X)
+
+        # Logo and title
+        logo_frame = tk.Frame(header, bg="#16213e")  # Changed from "transparent"
+        logo_frame.pack(side=tk.LEFT, padx=20)
+
+        title = tk.Label(logo_frame, text="TechYatri VLC Player", bg="#16213e",
+                         fg="#e94560", font=("Montserrat", 18, "bold"))
+        title.pack(side=tk.LEFT, padx=10)
+
+        # Social media buttons
+        social_frame = tk.Frame(header, bg="#16213e")  # Changed from "transparent"
+        social_frame.pack(side=tk.RIGHT, padx=20)
+
+        social_icons = [
+            ("Twitter", "https://twitter.com", "#1DA1F2"),
+            ("YouTube", "https://youtube.com", "#FF0000"),
+            ("GitHub", "https://github.com", "#333333")
+        ]
+
+        for name, url, color in social_icons:
+            btn = tk.Button(social_frame, text=name, bg=color, fg="white",
+                            font=("Arial", 9, "bold"), bd=0, padx=10,
+                            command=lambda u=url: webbrowser.open(u))
+            btn.pack(side=tk.LEFT, padx=5)
+            btn.bind("<Enter>", lambda e, b=btn: b.config(bg="#4a4a4a"))
+            btn.bind("<Leave>", lambda e, b=btn, c=color: b.config(bg=c))
+
+    def create_video_frame(self):
+        # Video frame with modern styling
+        self.video_panel = tk.Frame(self.root, bg="#0f3460", bd=0,
+                                    highlightthickness=2, highlightbackground="#e94560")
+        self.video_panel.pack(fill=tk.BOTH, expand=1, padx=20, pady=10)
+
+        # Canvas for video with hover effect
+        self.canvas = tk.Canvas(self.video_panel, bg="black", cursor="hand2")
+        self.canvas.pack(fill=tk.BOTH, expand=1)
+
+        # Double click for fullscreen
+        self.canvas.bind("<Double-Button-1>", self.toggle_fullscreen)
+
+        # Placeholder text when no video is loaded
+        self.placeholder = tk.Label(self.canvas, text="Open a video file to begin playback",
+                                    fg="white", bg="black", font=("Arial", 14))
+        self.placeholder.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+
+    def create_controls(self):
+        # Main controls frame
+        controls = tk.Frame(self.root, bg="#16213e", height=80)
+        controls.pack(fill=tk.X, padx=20, pady=(0, 10))
+
+        # Style for ttk widgets
+        style = ttk.Style()
+        style.theme_use('clam')
+
+        # Configure styles
+        style.configure('TButton', foreground='white', background='#e94560',
+                        font=("Arial", 10, "bold"), borderwidth=0, padding=8)
+        style.map('TButton', background=[('active', '#ff7b54'), ('disabled', '#4a4a4a')])
+
+        style.configure('TScale', background='#16213e', troughcolor='#0f3460',
+                        bordercolor='#e94560', lightcolor='#e94560', darkcolor='#e94560')
+
+        # Time info label
+        self.time_label = tk.Label(controls, text="00:00 / 00:00", bg="#16213e",
+                                   fg="white", font=("Consolas", 10))
+        self.time_label.pack(side=tk.LEFT, padx=10)
+
+        # Control buttons
+        btn_frame = tk.Frame(controls, bg="#16213e")  # Changed from "transparent"
+        btn_frame.pack(side=tk.LEFT, expand=1)
+
+        # Button icons (using text emoji as fallback)
+        buttons = [
+            ("⏮", "Rewind", self.rewind),
+            ("⏪", "Back 10s", self.back_10s),
+            ("⏯", "Play/Pause", self.toggle_play),
+            ("⏩", "Forward 10s", self.forward_10s),
+            ("⏭", "Forward", self.fast_forward),
+            ("⏹", "Stop", self.stop),
+            ("📂", "Open File", self.open_file),
+            ("🔊", "Mute", self.toggle_mute),
+            ("🖥️", "Fullscreen", self.toggle_fullscreen)
+        ]
+
+        for icon, tooltip, command in buttons:
+            btn = ttk.Button(btn_frame, text=f" {icon} ", command=command)
+            btn.pack(side=tk.LEFT, padx=5)
+            self.create_tooltip(btn, tooltip)
+
+        # Seek slider
+        self.scale_var = tk.DoubleVar()
+        self.seek_slider = ttk.Scale(controls, from_=0, to=1000,
+                                     orient=tk.HORIZONTAL,
+                                     variable=self.scale_var,
+                                     command=self.on_seek,
+                                     length=300)
+        self.seek_slider.pack(side=tk.RIGHT, padx=10)
+
+        # Volume control
+        self.volume_var = tk.IntVar(value=50)
+        self.volume_slider = ttk.Scale(controls, from_=0, to=100,
+                                       orient=tk.HORIZONTAL,
+                                       variable=self.volume_var,
+                                       command=self.change_volume,
+                                       length=100)
+        self.volume_slider.pack(side=tk.RIGHT, padx=10)
+
+        # Set initial volume
+        self.player.audio_set_volume(50)
+
+    def create_footer(self):
+        # Status bar
+        footer = tk.Frame(self.root, bg="#0f3460", height=30)
+        footer.pack(fill=tk.X, side=tk.BOTTOM)
+
+        self.status = tk.Label(footer, text="Ready", bg="#0f3460",
+                               fg="#e94560", font=("Arial", 9))
+        self.status.pack(side=tk.LEFT, padx=10)
+
+        # Current file info
+        self.file_info = tk.Label(footer, text="No file loaded", bg="#0f3460",
+                                  fg="white", font=("Arial", 9))
+        self.file_info.pack(side=tk.RIGHT, padx=10)
+
+    def create_tooltip(self, widget, text):
+        # Create a tooltip for a widget
+        tooltip = tk.Toplevel(widget)
+        tooltip.withdraw()
+        tooltip.overrideredirect(True)
+
+        label = tk.Label(tooltip, text=text, bg="#ffffe0", relief=tk.SOLID,
+                         borderwidth=1, font=("Arial", 8))
+        label.pack()
+
+        def enter(event):
+            x = widget.winfo_rootx() + widget.winfo_width() // 2
+            y = widget.winfo_rooty() + widget.winfo_height() + 5
+            tooltip.geometry(f"+{x}+{y}")
+            tooltip.deiconify()
+
+        def leave(event):
+            tooltip.withdraw()
+
+        widget.bind("<Enter>", enter)
+        widget.bind("<Leave>", leave)
+
+    def embed_video(self):
+        if self.video_panel.winfo_exists():
+            handle = self.video_panel.winfo_id()
+            if platform.system() == "Windows":
+                self.player.set_hwnd(handle)
+            elif platform.system() == "Linux":
+                self.player.set_xwindow(handle)
+            elif platform.system() == "Darwin":
+                self.player.set_nsobject(handle)
+
+    def open_file(self):
+        filename = filedialog.askopenfilename(
+            title="Select Video File",
+            filetypes=[("Video files", "*.mp4 *.avi *.mkv *.mov *.flv *.webm *.wmv"),
+                       ("All files", "*.*")]
+        )
+        if filename:
+            self.placeholder.place_forget()
+            media = self.instance.media_new(filename)
+            self.player.set_media(media)
+            self.play()
+            self.media_loaded = True
+            self.file_info.config(text=filename.split("/")[-1])
+            self.status.config(text=f"Playing: {filename.split('/')[-1]}")
+
+    def play(self):
+        if self.media_loaded:
+            self.player.play()
+            self.status.config(text="Playing")
+
+    def pause(self):
+        if self.media_loaded:
+            self.player.pause()
+            self.status.config(text="Paused")
+
+    def toggle_play(self):
+        if self.media_loaded:
+            if self.player.is_playing():
+                self.pause()
+            else:
+                self.play()
+
+    def stop(self):
+        if self.media_loaded:
+            self.player.stop()
+            self.placeholder.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+            self.time_label.config(text="00:00 / 00:00")
+            self.scale_var.set(0)
+            self.status.config(text="Stopped")
+
+    def rewind(self):
+        if self.media_loaded:
+            self.player.set_time(0)
+
+    def fast_forward(self):
+        if self.media_loaded:
+            media = self.player.get_media()
+            if media:
+                media.parse()
+                duration = media.get_duration()
+                self.player.set_time(duration - 1000)
+
+    def back_10s(self):
+        if self.media_loaded:
+            current_time = self.player.get_time()
+            self.player.set_time(max(0, current_time - 10000))
+
+    def forward_10s(self):
+        if self.media_loaded:
+            current_time = self.player.get_time()
+            media = self.player.get_media()
+            if media:
+                media.parse()
+                duration = media.get_duration()
+                self.player.set_time(min(duration, current_time + 10000))
+
+    def change_volume(self, event=None):
+        volume = int(self.volume_var.get())
+        self.player.audio_set_volume(volume)
+        if volume == 0:
+            self.status.config(text="Muted")
+        else:
+            self.status.config(text=f"Volume: {volume}%")
+
+    def toggle_mute(self):
+        if self.media_loaded:
+            volume = self.player.audio_get_volume()
+            if volume > 0:
+                self.last_volume = volume
+                self.player.audio_set_volume(0)
+                self.volume_var.set(0)
+                self.status.config(text="Muted")
+            else:
+                self.player.audio_set_volume(self.last_volume)
+                self.volume_var.set(self.last_volume)
+                self.status.config(text=f"Volume: {self.last_volume}%")
+
+    def update_time(self):
+        if self.media_loaded and self.player.is_playing():
+            length = self.player.get_length()
+            current = self.player.get_time()
+
+            if length > 0:
+                # Update slider position
+                pos = current / length * 1000
+                self.scale_var.set(pos)
+
+                # Update time label
+                current_str = self.format_time(current)
+                length_str = self.format_time(length)
+                self.time_label.config(text=f"{current_str} / {length_str}")
+
+        self.root.after(200, self.update_time)
+
+    def format_time(self, milliseconds):
+        seconds = milliseconds // 1000
+        minutes = seconds // 60
+        hours = minutes // 60
+        return f"{hours:02d}:{minutes % 60:02d}:{seconds % 60:02d}"
+
+    def on_seek(self, value):
+        if self.media_loaded:
+            length = self.player.get_length()
+            if length > 0:
+                seek_time = float(value) / 1000 * length
+                self.player.set_time(int(seek_time))
+
+    def toggle_fullscreen(self, event=None):
+        self.is_fullscreen = not self.is_fullscreen
+        self.root.attributes("-fullscreen", self.is_fullscreen)
+
+        if not self.is_fullscreen:
+            self.root.geometry("900x600")
+
+        self.status.config(text="Fullscreen" if self.is_fullscreen else "Windowed Mode")
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    try:
+        # Windows only - set taskbar icon
+        from ctypes import windll
+
+        windll.shell32.SetCurrentProcessExplicitAppUserModelID("TechYatri.VLC.Player")
+    except:
+        pass
+
+    app = VideoPlayer(root)
+    root.mainloop()
